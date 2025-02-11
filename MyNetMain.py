@@ -8,9 +8,9 @@
 import time
 import asyncio
 import scapy.all as scapy
-import requests
 from datetime import datetime
 import json
+import requests
 import textwrap
 from credentials import ip_range
 from registered_devices import known_devices
@@ -152,29 +152,91 @@ def send_devices_as_json(devices):
 
     :return json_data: json object with device list
     """
-    # Create a dictionary with device info and timestamp
-    device_info_dict = {
-        "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
-        "devices": devices,
-        "eventDescription": "Device found on network"
-    }
-    
-    # Convert the dictionary to a JSON object for sending in HTTP Post
-    json_data = json.dumps(device_info_dict, indent=4)
-    
-    # Print or send the JSON object (here we are printing for demonstration)
-    print("Sending device info as JSON:")
-    print(json_data)
-    
-    # # Store URL of resource (practice server)
+    # Store URL of resource (practice server)
     url = 'http://127.0.0.1:5000/send-json' 
+    # url = 'http://classwork.engr.oregonstate.edu:14563' 
+    # Send message for each device found
+    for device in devices:
+        device_name = device["name"]
+        message = {
+            "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+            "eventDescription": f"{device_name} detected on network"
+        }
+    
+        # Convert the dictionary to a JSON object for sending in HTTP Post
+        json_data = json.dumps(message, indent=4)
+        
+        # Send the JSON object with message 
+        print("Sending device info as JSON:")
+        print(json_data)        # Printing for testing purpose, may remove later
+        
+        # Send new data via POST request
+        response = requests.post(url, json=json_data)
 
-    # Send new data via POST request
-    response = requests.post(url, json=json_data)
+        # Check response from server
+        if response.status_code == 200:
+            print(f"\nServer Response: {response.json()}")
+        else:
+            print(f"Failed to send message. Status code: {response.status_code}")
+    
+    return json_data
+
+
+# UNDER CONSTRUCTION
+def get_database_log_all():
+    """
+    Sends a GET request to database microservice to get all records
+
+    :return json_data: database log
+    """
+    # Store URL of resource
+    url = 'http://classwork.engr.oregonstate.edu:14563/network/events/list' 
+    
+    print("Retrieving all records from online database log...\n")   
+    # Send GET request
+    response = requests.get(url)
 
     # Check response from server
     if response.status_code == 200:
-        print(f"\nServer Response: {response.json()}")
+        print(f"\nDatabase Log: {response.json()}")
+    else:
+        print(f"Failed to send message. Status code: {response.status_code}")
+    
+    return response
+
+
+# UNDER CONSTRUCTION
+def get_filerted_db_log(start_date, end_date):
+    """
+    Sends a GET request to database microservice to get 
+    records between start_date and end_date, inclusive.
+
+    :param start_date (str): YYYY-MM-DD
+    :param end_date (str): YYYY-MM-DD
+
+    :return json_data: filtered database log
+    """
+    # Store URL of resources
+    url = 'http://classwork.engr.oregonstate.edu:14563/network/events?startDateTime=2025-01-01T14:23:01&endDateTime=2025-02-01T14:23:01' 
+    
+    # Format dates
+    json_s_date = start_date + "T00:00:00"
+    json_e_date = end_date + "T00:00:00"
+    message = {
+        "startDateTime": json_s_date,
+        "endDateTime": json_e_date
+    }
+   
+    # Convert the dictionary to a JSON object for sending in HTTP Post
+    json_data = json.dumps(message, indent=4)
+
+    print(f"Retrieving records from {start_date} to {end_date} from database...")   
+    # Send GET request for records
+    response = requests.get(url, json=json_data)
+
+    # Check response from server
+    if response.status_code == 200:
+        print(f"\nDatabase Log: {response.json()}")
     else:
         print(f"Failed to send message. Status code: {response.status_code}")
     
@@ -213,8 +275,8 @@ async def network_monitor(prev_devices):
             # Log the new devices to the file
             log_devices_to_file(new_devices, log_file)
             
-            # # Send the new devices as a JSON object
-            # send_devices_as_json(new_devices)
+            # Send the new devices as a JSON object
+            send_devices_as_json(new_devices)
             
             # Update the previous devices list with the current list
             prev_devices = devices

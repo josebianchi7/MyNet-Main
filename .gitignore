@@ -1,0 +1,7 @@
+# Ignore following files/ directories for syncs
+/credentials.py
+/registered_devices.py
+/devices_log.txt
+
+PythonServer/ 
+__pycache__/
