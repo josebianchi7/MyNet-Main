@@ -1,4 +1,4 @@
-# Name: Jose Bianchi 
+# Author: Jose Bianchi 
 # Description: Detailed monitoring program with following capability:
 #   Perform network discovery by sending ARP (Address Resolution Protocol) 
 #   requests to all devices on the local network and collecting responses.
@@ -9,10 +9,13 @@ import time
 import asyncio
 import scapy.all as scapy
 from datetime import datetime
-import json
 import requests
+import json
 import textwrap
 from credentials import ip_range
+from credentials import url_post
+from credentials import url_get_all
+from credentials import url_get_filt
 from registered_devices import known_devices
 
 
@@ -47,7 +50,7 @@ def info_help():
     print(textwrap.fill(contact_message, width=70))
     
 
-def read_log(file_path):
+def read_local_log(file_path):
     """
     Reads log data.
 
@@ -97,11 +100,11 @@ def discover_devices(ip_range, registered_devices):
         # Compare with known devices
         for safe_device in registered_devices:
             if device_info["ip"] == safe_device["ip"] and device_info["mac"] == safe_device["mac"]:
-                # When match found, enter known name and break
+                # When match found, enter known name and end this loop
                 device_info["name"] = safe_device["name"]  
                 break  
 
-        # Build list with device details      
+        # Build list with device details
         devices.append(device_info)
     
     return devices
@@ -153,25 +156,25 @@ def send_devices_as_json(devices):
     :return json_data: json object with device list
     """
     # Store URL of resource (practice server)
-    url = 'http://127.0.0.1:5000/send-json' 
-    # url = 'http://classwork.engr.oregonstate.edu:14563' 
-    # Send message for each device found
+    # Send message for each device found except for home router
     for device in devices:
         device_name = device["name"]
+        if device_name == "Home Router":
+            continue
         message = {
             "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
             "eventDescription": f"{device_name} detected on network"
         }
     
         # Convert the dictionary to a JSON object for sending in HTTP Post
-        json_data = json.dumps(message, indent=4)
-        
-        # Send the JSON object with message 
-        print("Sending device info as JSON:")
-        print(json_data)        # Printing for testing purpose, may remove later
+        json_data = json.dumps(message, indent=4)   
         
         # Send new data via POST request
-        response = requests.post(url, json=json_data)
+        response = requests.post(
+            url_post, 
+            json_data, 
+            headers={ "Content-Type": "application/json" }
+            )
 
         # Check response from server
         if response.status_code == 200:
@@ -182,30 +185,33 @@ def send_devices_as_json(devices):
     return json_data
 
 
-# UNDER CONSTRUCTION
 def get_database_log_all():
     """
     Sends a GET request to database microservice to get all records
 
     :return json_data: database log
-    """
-    # Store URL of resource
-    url = 'http://classwork.engr.oregonstate.edu:14563/network/events/list' 
-    
+    """   
     print("Retrieving all records from online database log...\n")   
     # Send GET request
-    response = requests.get(url)
+    response = requests.get(url_get_all)
 
     # Check response from server
     if response.status_code == 200:
-        print(f"\nDatabase Log: {response.json()}")
+        # print(f"\nDatabase Log: {response.json()}")
+        print("Log retrieved successfully.\n")
     else:
-        print(f"Failed to send message. Status code: {response.status_code}")
+        print(f"Failed to send message. Status code: {response.status_code}\n")
     
-    return response
+    data = response.json()
+    # Display log contents with titles
+    print("Database Log:")
+    print("-" * 60)
+    print(f"{'Timestamp':<20} | {'Event Description':<40}")
+    print("-" * 60)
+    for event in data:
+            print(f"{event['timestamp']:<20} | {event['eventDescription']:<40}")
 
 
-# UNDER CONSTRUCTION
 def get_filerted_db_log(start_date, end_date):
     """
     Sends a GET request to database microservice to get 
@@ -216,9 +222,6 @@ def get_filerted_db_log(start_date, end_date):
 
     :return json_data: filtered database log
     """
-    # Store URL of resources
-    url = 'http://classwork.engr.oregonstate.edu:14563/network/events?startDateTime=2025-01-01T14:23:01&endDateTime=2025-02-01T14:23:01' 
-    
     # Format dates
     json_s_date = start_date + "T00:00:00"
     json_e_date = end_date + "T00:00:00"
@@ -226,21 +229,33 @@ def get_filerted_db_log(start_date, end_date):
         "startDateTime": json_s_date,
         "endDateTime": json_e_date
     }
-   
+    
+    # Update URL to have dates in URLS
+    url_s_date = "startDateTime=" + json_s_date
+    url_e_date = "endDateTime=" + json_e_date
+    url_get_filt_final = url_get_filt + url_s_date + "&" + url_e_date
+
     # Convert the dictionary to a JSON object for sending in HTTP Post
     json_data = json.dumps(message, indent=4)
 
-    print(f"Retrieving records from {start_date} to {end_date} from database...")   
     # Send GET request for records
-    response = requests.get(url, json=json_data)
+    response = requests.get(url_get_filt_final, json=json_data)
 
     # Check response from server
     if response.status_code == 200:
-        print(f"\nDatabase Log: {response.json()}")
+        # print(f"\nDatabase Log: {response.json()}")
+        print(f"Retrieving records from {start_date} to {end_date} from database...\n")  
     else:
         print(f"Failed to send message. Status code: {response.status_code}")
-    
-    return json_data
+
+    data = response.json()
+    # Display log contents with titles 
+    print(f"Database Log From {start_date} to {end_date}:")
+    print("-" * 60)
+    print(f"{'Timestamp':<20} | {'Event Description':<40}")
+    print("-" * 60)
+    for event in data:
+            print(f"{event['timestamp']:<20} | {event['eventDescription']:<40}")
 
 
 def check_for_new_devices(previous_devices, current_devices):
@@ -281,7 +296,6 @@ async def network_monitor(prev_devices):
             # Update the previous devices list with the current list
             prev_devices = devices
             
-        # print_device_info(prev_devices)
         # Wait 2 seconds before checking again
         await asyncio.sleep(2)
 
@@ -298,7 +312,7 @@ async def main():
 
     while True:
         choice = 9
-        valid_choices = [0, 1, 2]
+        valid_choices = [0, 1, 2, 3]
         
         # Validate user chooses a number option or do not proceed
         while choice not in valid_choices:
@@ -308,7 +322,8 @@ async def main():
                 print("     1) Turn on MyNet Network Monitoring")
             else:
                 print("     1) View Devices Currently On Network")
-            print("     2) Open Log Report")
+            print("     2) View Log Report for Specific Timeframe")
+            print("     3) View Complete Log")
             
             choice = input("\n Enter a listed option number to continue: ")
             # Ensure input is a number
@@ -337,10 +352,19 @@ async def main():
 
             await asyncio.sleep(1)
 
-        # Option 2: Read Log Report
+        # Option 2: Get Specific Time Window Log Report
         elif choice == 2:
             print("\n")
-            read_log(log_file)
+            print("To see the log for a specific time window, you will need to enter a start and end date.")
+            print("Please format dates as YYYY-MM-DD.")
+            date1 = input("Start Date: ")
+            date2 = input("End Date: \n")
+            get_filerted_db_log(date1, date2)
+        
+        # Option 3: Get complete Log
+        elif choice == 3:
+            get_database_log_all()
+
 
         time.sleep(1)
         print("\n\nMyNet\n")
