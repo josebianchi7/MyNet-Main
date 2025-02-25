@@ -1,7 +1,7 @@
 
 # MyNet
 
-This project is a network security program that uses various technologies to conduct common network security tasks. 
+#### This project is a network security program that uses various technologies to conduct common network security tasks. 
 
 
 ## Acknowledgements
