@@ -14,7 +14,7 @@
 
 ## Authors
 
-- [@josebianchi7](https://github.com/josebianchi7/Portfolio)
+- [@josebianchi7](https://github.com/josebianchi7)
 
 
 ## Deployment
