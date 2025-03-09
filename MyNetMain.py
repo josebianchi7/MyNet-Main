@@ -16,6 +16,7 @@ from credentials import ip_range
 from credentials import url_post
 from credentials import url_get_all
 from credentials import url_get_filt
+from credentials import url_notify
 from registered_devices import known_devices
 
 
@@ -68,6 +69,23 @@ def read_local_log(file_path):
     file.close()
 
 
+def post_alert_event(message):
+    """
+    Sends message to alert system that will log to database 
+    and create alert notifications.
+
+    :param message: dictionary object, should include timestamp and eventDescription keys
+        Ex:
+        message = {
+                "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+                "eventDescription": "event A has occured."
+            }
+    """
+    response = requests.post(url_notify, json=message)
+    if response.status_code != 200:
+        print(f"Failed to send message. Status code: {response.status_code}")
+
+
 def discover_devices(ip_range, registered_devices):
     """
     Gets devices on the network.
@@ -103,10 +121,7 @@ def discover_devices(ip_range, registered_devices):
                 # When match found, enter known name and end this loop
                 device_info["name"] = safe_device["name"]  
                 break  
-
-        # Build list with device details
         devices.append(device_info)
-    
     return devices
 
 
@@ -125,9 +140,26 @@ def print_device_info(devices):
         print("-" * 60)
         
         for device in devices:
+            if device['name'] == "Home Router":
+                continue
             print(f"{device['name']:<20} {device['ip']:<20} {device['mac']}")
     else:
         print("No devices found on the network.")
+
+
+def log_event_to_file(event_message):
+    """
+    Logs message to a txt file.
+
+    :param message: string message.    
+    """
+    file = "event_log.txt"
+    with open(file, "a") as file:
+        # Write the timestamp of when the devices were found
+        file.write(f"Devices found at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        # Write the device details
+        file.write(event_message)
+        file.write("-" * 60 + "\n")
 
 
 def log_devices_to_file(devices, file_path):
@@ -147,13 +179,41 @@ def log_devices_to_file(devices, file_path):
         file.write("-" * 60 + "\n")
 
 
-def send_devices_as_json(devices):
+def post_to_db_log(message):
+    """
+    HTTP Post function that sends message to db log.
+
+    :param message: dictionary object, must include timestamp and eventDescription keys
+        Ex:
+        message = {
+                "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+                "eventDescription": "event A has occured."
+            }
+    """
+    # Convert the message to a JSON object for sending in HTTP Post
+    json_data = json.dumps(message, indent=4)   
+    
+    # Send new data via POST request
+    response = requests.post(
+        url_post, 
+        json_data, 
+        headers={ "Content-Type": "application/json" }
+        )
+
+    # Check response from server
+    if response.status_code == 200:
+        print(f"\nServer Response: {response.json()}")
+    else:
+        print(f"Failed to send message. Status code: {response.status_code}")
+    
+    return json_data
+
+
+def send_db_devices_as_json(devices):
     """
     Sends devices as a JSON object with timestamp
 
     :param devices: list of devices.
-
-    :return json_data: json object with device list
     """
     # Store URL of resource (practice server)
     # Send message for each device found except for home router
@@ -165,24 +225,7 @@ def send_devices_as_json(devices):
             "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
             "eventDescription": f"{device_name} detected on network"
         }
-    
-        # Convert the dictionary to a JSON object for sending in HTTP Post
-        json_data = json.dumps(message, indent=4)   
-        
-        # Send new data via POST request
-        response = requests.post(
-            url_post, 
-            json_data, 
-            headers={ "Content-Type": "application/json" }
-            )
-
-        # Check response from server
-        if response.status_code == 200:
-            print(f"\nServer Response: {response.json()}")
-        else:
-            print(f"Failed to send message. Status code: {response.status_code}")
-    
-    return json_data
+        post_to_db_log(message)    
 
 
 def get_database_log_all():
@@ -261,12 +304,27 @@ def get_filerted_db_log(start_date, end_date):
 def check_for_new_devices(previous_devices, current_devices):
     """
     Checks for new devices by comparing current devices found with stored list.
+    Creates alert event for log and notification service if unknown device found.
 
     :param previous_devices: last recorded list of devices
     :param current_devices: devices currently on network
     """
-    # Compare the two device lists and find any new devices
-    new_devices = [device for device in current_devices if device not in previous_devices]
+    new_devices = []
+    for device in current_devices:
+        if device not in previous_devices:
+            new_devices.append(device)
+            # Save event and send event alert for unkown devices on network
+            if device["name"] == "unknown":
+                unknown_ip = device["ip"]
+                unknown_mac = device["mac"]
+                event_msg = f"Unknown device detected on network. Device IP: {unknown_ip}, Device MAC: {unknown_mac}"
+                log_event_to_file(event_msg)
+                message = {
+                "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+                "eventDescription": f"Unknown device detected on local network. Device IP: {unknown_ip}"
+                }
+                post_alert_event(message)
+
     return new_devices
 
 
@@ -274,29 +332,19 @@ async def network_monitor(prev_devices):
     """
     Runs main functionality to monitor network
     """
-    # Path to the log file
     log_file = "devices_log.txt" 
 
     # Discover devices on the network
     while True:
         print("\n\nMyNet\n\nMonitoring Running\n")
-        # Discover devices on the network
         devices = discover_devices(ip_range, known_devices)
         print_device_info(devices)
 
-        # Check if there are new devices to log
         new_devices = check_for_new_devices(prev_devices, devices)
         if new_devices:
-            # Log the new devices to the file
             log_devices_to_file(new_devices, log_file)
-            
-            # Send the new devices as a JSON object
-            send_devices_as_json(new_devices)
-            
-            # Update the previous devices list with the current list
             prev_devices = devices
             
-        # Wait 2 seconds before checking again
         await asyncio.sleep(2)
 
 
@@ -305,8 +353,6 @@ async def main():
     Main program.
     """
     p_devices = []
-    # Path to the log file
-    log_file = "devices_log.txt" 
     # Program running checker   
     monitoring = False
 

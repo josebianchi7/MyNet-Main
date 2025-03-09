@@ -2,6 +2,7 @@
 /credentials.py
 /registered_devices.py
 /devices_log.txt
+/event_log.txt
 
 PythonServer/ 
 __pycache__/
