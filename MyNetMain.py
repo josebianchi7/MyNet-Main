@@ -179,55 +179,6 @@ def log_devices_to_file(devices, file_path):
         file.write("-" * 60 + "\n")
 
 
-def post_to_db_log(message):
-    """
-    HTTP Post function that sends message to db log.
-
-    :param message: dictionary object, must include timestamp and eventDescription keys
-        Ex:
-        message = {
-                "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
-                "eventDescription": "event A has occured."
-            }
-    """
-    # Convert the message to a JSON object for sending in HTTP Post
-    json_data = json.dumps(message, indent=4)   
-    
-    # Send new data via POST request
-    response = requests.post(
-        url_post, 
-        json_data, 
-        headers={ "Content-Type": "application/json" }
-        )
-
-    # Check response from server
-    if response.status_code == 200:
-        print(f"\nServer Response: {response.json()}")
-    else:
-        print(f"Failed to send message. Status code: {response.status_code}")
-    
-    return json_data
-
-
-def send_db_devices_as_json(devices):
-    """
-    Sends devices as a JSON object with timestamp
-
-    :param devices: list of devices.
-    """
-    # Store URL of resource (practice server)
-    # Send message for each device found except for home router
-    for device in devices:
-        device_name = device["name"]
-        if device_name == "Home Router":
-            continue
-        message = {
-            "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
-            "eventDescription": f"{device_name} detected on network"
-        }
-        post_to_db_log(message)    
-
-
 def get_database_log_all():
     """
     Sends a GET request to database microservice to get all records
