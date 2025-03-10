@@ -18,6 +18,7 @@ from credentials import url_get_all
 from credentials import url_get_filt
 from credentials import url_notify
 from registered_devices import known_devices
+from credentials import url_bandwidth
 
 
 def welcome():
@@ -37,17 +38,22 @@ def info_help():
     print("\n\nMyNet\n\nInformation and Resources\n")
 
     info_message = "Hello, this program is a home network protection tool. "
-    info_message += "With this version, you can see devices currently on your network. "
-    info_message += "This program will also log network events. "
-    info_message += "These network events include when a device connects to your network. "
-    info_message += "If an event like this occurs, then the program logs data about the device. "
-    info_message += "Users can use the data presented and logged by this program to gain more confidence in their network's security. "
-    info_message += "This program may reveal information that motivates the user to enhance their network security measures.\n"
+    info_message += "With this version, you can see devices currently on your network, "
+    info_message += "and see how much bandwidth different applications and programs are using."
+    info_message += "This program will also log important network events to a secure database. "
+    info_message += "These network events include when an unknown device connects to your network, "
+    info_message += "or when a program or device is using a concerning amount of bandwidth. "
+    info_message += "When these events are logged, the program will also generate an alert notification. "
+    info_message += "This alert notification will trigger a desktop notification and send you an email, depending on the alert type. "
+    info_message += "We can also get alerts if a program or application is being used more hours than we prefer or expect. "
+    info_message += "Users can use the data presented and logged by this program to gain more confidence in their network's activity and security. "
+    info_message += "This program may reveal information that motivates the user to enhance their network security measures."
 
     contact_message = "For further questions or concerns, please contact the developer, "
     contact_message += "Jose Bianchi at bianchjo@oregonstate.edu.\n"
     # Print long string with textwrap to limit words per line
     print(textwrap.fill(info_message, width=70))
+    print("\n")
     print(textwrap.fill(contact_message, width=70))
     
 
@@ -272,12 +278,41 @@ def check_for_new_devices(previous_devices, current_devices):
                 log_event_to_file(event_msg)
                 message = {
                 "timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
-                "eventDescription": f"Unknown device detected on local network. Device IP: {unknown_ip}"
+                "eventDescription": f"Unknown device detected on local network. Device IP: {unknown_ip}",
+                "source": "Device Detector"
                 }
                 post_alert_event(message)
 
     return new_devices
 
+
+def get_bandwidth_usage():
+    """
+    Gets and prints bandwidth usage from microservice program.
+    """
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    try:
+        response = requests.get(url_bandwidth)
+        
+        if response.status_code == 200:
+
+            log_data = response.json()
+            print(f"\nBandwidth usage data for today, {current_date}:\n")
+            print("-" * 60)
+            print(f"{'IP Address':<20} | {'Name':<20} | {'Usage (GB)':<20}")
+            print("-" * 60)
+            for entry in log_data:
+                data = json.loads(entry)
+                if data['device_name'] == 'Unknown Device':
+                    continue
+                
+                print(f"{data['ip']:<20} | {data['device_name']:<20} | {data['usage']:<20}")
+            print("-" * 60)
+        else:
+            print(f"Error: {response.status_code}, {response.json()['error']}")
+    except Exception as e:
+        print(f"Error connecting to the server: {e}")
+    
 
 async def network_monitor(prev_devices):
     """
@@ -309,7 +344,7 @@ async def main():
 
     while True:
         choice = 9
-        valid_choices = [0, 1, 2, 3]
+        valid_choices = [0, 1, 2, 3, 4]
         
         # Validate user chooses a number option or do not proceed
         while choice not in valid_choices:
@@ -319,8 +354,9 @@ async def main():
                 print("     1) Turn on MyNet Network Monitoring")
             else:
                 print("     1) View Devices Currently On Network")
-            print("     2) View Log Report for Specific Timeframe")
-            print("     3) View Complete Log")
+            print("     2) View Event Log for Specific Timeframe")
+            print("     3) View Complete Event Log")
+            print("     4) View Most Recent Bandwidth Usage Report")
             
             choice = input("\n Enter a listed option number to continue: ")
             # Ensure input is a number
@@ -355,12 +391,16 @@ async def main():
             print("To see the log for a specific time window, you will need to enter a start and end date.")
             print("Please format dates as YYYY-MM-DD.")
             date1 = input("Start Date: ")
-            date2 = input("End Date: \n")
+            date2 = input("End Date: ")
             get_filerted_db_log(date1, date2)
         
         # Option 3: Get complete Log
         elif choice == 3:
             get_database_log_all()
+
+        # Option 4: Get complete Log
+        elif choice == 4:
+            get_bandwidth_usage()      
 
 
         time.sleep(1)
